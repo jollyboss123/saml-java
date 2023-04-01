@@ -19,7 +19,7 @@ This project provides a basic implementation of a SAML Service Provider (SP) usi
 ## Installation and Configuration
 * To use this project, you need to:
 * Clone the repository
-* Configure the SAML properties in `src/main/resources/application.yml` file
+* Configure the SAML properties in `src/main/resources/application.properties` file
 * Customize the application to your needs
 
 ## How to run
