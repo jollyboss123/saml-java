@@ -2,7 +2,7 @@ package com.jolly.saml.core;
 
 import com.jolly.saml.CommonTestSupport;
 import com.jolly.saml.TestConfig;
-import com.jolly.saml.stereotypes.CurrentUser;
+import com.jolly.saml.annotations.CurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

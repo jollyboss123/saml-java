@@ -1,6 +1,6 @@
 package com.jolly.saml.core;
 
-import com.jolly.saml.stereotypes.CurrentUser;
+import com.jolly.saml.annotations.CurrentUser;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.User;

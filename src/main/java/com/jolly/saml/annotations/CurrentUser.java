@@ -1,4 +1,4 @@
-package com.jolly.saml.stereotypes;
+package com.jolly.saml.annotations;
 
 import java.lang.annotation.*;
 
