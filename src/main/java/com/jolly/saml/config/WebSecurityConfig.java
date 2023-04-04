@@ -4,6 +4,12 @@ import com.jolly.saml.core.SAMLUserDetailsServiceImpl;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.velocity.app.VelocityEngine;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.*;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.opensaml.saml2.metadata.provider.AbstractMetadataProvider;
 import org.opensaml.saml2.metadata.provider.MetadataProvider;
 import org.opensaml.saml2.metadata.provider.MetadataProviderException;
@@ -12,10 +18,8 @@ import org.opensaml.util.resource.FilesystemResource;
 import org.opensaml.util.resource.ResourceException;
 import org.opensaml.xml.parse.ParserPool;
 import org.opensaml.xml.parse.StaticBasicParserPool;
-import org.opensaml.xml.security.credential.UsageType;
+import org.opensaml.xml.security.credential.BasicCredential;
 import org.opensaml.xml.security.x509.BasicX509Credential;
-import org.opensaml.xml.security.x509.X509Credential;
-import org.opensaml.xml.signature.X509Certificate;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,8 +27,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.DefaultResourceLoader;
-import org.springframework.core.io.Resource;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
@@ -54,10 +56,9 @@ import org.springframework.security.web.authentication.www.BasicAuthenticationFi
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.PrivateKey;
-import java.security.PublicKey;
+import java.math.BigInteger;
+import java.security.*;
+import java.security.cert.X509Certificate;
 import java.util.*;
  
 @Configuration
@@ -69,8 +70,16 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
     private String spEntityId;
     @Value("${jolly.saml2.sp.assertion_consumer_service.url}")
     private String acsUrl;
+    @Value("${jolly.saml2.sp.error.url}")
+    private String errorUrl;
     @Value("${jolly.saml2.sp.nameidformat}")
     private String nameIdFormat;
+    @Value("${jolly.password}")
+    private String password;
+    @Value("${jolly.alias}")
+    private String alias;
+    @Value("${jolly.saml2.security.signature_algorithm}")
+    private String signatureAlgorithm;
 	private Timer backgroundTaskTimer;
 	private MultiThreadedHttpConnectionManager multiThreadedHttpConnectionManager;
 
@@ -175,122 +184,102 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
     }
  
     // Central storage of cryptographic keys
+//    @Bean
+//    public KeyManager keyManager() {
+//        DefaultResourceLoader loader = new DefaultResourceLoader();
+//        Resource storeFile = loader
+//                .getResource("classpath:/saml/samlKeystore.jks");
+//        String storePass = "nalle123";
+//        Map<String, String> passwords = new HashMap<String, String>();
+//        passwords.put("apollo", "nalle123");
+//        String defaultKey = "apollo";
+//        return new JKSKeyManager(storeFile, storePass, passwords, defaultKey);
+//    }
+
     @Bean
-    public KeyManager keyManager() {
-        DefaultResourceLoader loader = new DefaultResourceLoader();
-        Resource storeFile = loader
-                .getResource("classpath:/saml/samlKeystore.jks");
-        String storePass = "nalle123";
-        Map<String, String> passwords = new HashMap<String, String>();
-        passwords.put("apollo", "nalle123");
-        String defaultKey = "apollo";
-        return new JKSKeyManager(storeFile, storePass, passwords, defaultKey);
+    public KeyManager keyManager() throws Exception {
+        // Generate the credential
+        BasicX509Credential credential = generateCredential(this.spEntityId, "HTTP-POST");
+
+        // Create a BasicCredential
+        BasicCredential basicCredential = new BasicCredential();
+        basicCredential.setEntityId(this.spEntityId);
+        basicCredential.setPublicKey(credential.getPublicKey());
+        basicCredential.setPrivateKey(credential.getPrivateKey());
+
+        // Create a KeyStore containing the credential
+        KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        keyStore.load(null, null);
+        keyStore.setKeyEntry(alias, basicCredential.getPrivateKey(),
+                password.toCharArray(), new java.security.cert.Certificate[] { credential.getEntityCertificate() });
+
+        // Create a JKSKeyManager
+        return new JKSKeyManager(keyStore,  new HashMap<>(), alias);
     }
 
-//    public static X509Credential generateCredential(String entityId, String protocol) throws Exception {
-//        // Generate a key pair
-//        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-//        keyPairGenerator.initialize(2048);
-//        KeyPair keyPair = keyPairGenerator.generateKeyPair();
-//        PublicKey publicKey = keyPair.getPublic();
-//        PrivateKey privateKey = keyPair.getPrivate();
-//
-//        // Generate a self-signed certificate
-//        X509Certificate cert = generateSelfSignedCertificate(entityId, protocol, publicKey, privateKey);
-//
-//        // Create and return the credential
-//        BasicX509Credential credential = new BasicX509Credential();
-//        credential.setEntityCertificate(cert);
-//        credential.setPrivateKey(privateKey);
-//        return credential;
-//    }
-//
-//    private static X509Certificate generateSelfSignedCertificate(String entityId, String protocol, PublicKey publicKey, PrivateKey privateKey) throws Exception {
-//        Calendar calendar = Calendar.getInstance();
-//        Date startDate = calendar.getTime();
-//        calendar.add(Calendar.YEAR, 1);
-//        Date endDate = calendar.getTime();
-//
-//        X509Certificate cert = KeyStoreUtils.generateSelfSignedCertificate(
-//                publicKey,
-//                privateKey,
-//                String.format("CN=%s,OU=%s,O=%s,L=%s,ST=%s,C=%s", entityId, protocol, protocol, protocol, protocol, protocol),
-//                startDate,
-//                endDate,
-//                "SHA256withRSA",
-//                true);
-//
-//        return cert;
-//    }
+    public static BasicX509Credential generateCredential(String entityId, String protocol) throws Exception {
+        // Generate a key pair
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+        PublicKey publicKey = keyPair.getPublic();
+        PrivateKey privateKey = keyPair.getPrivate();
 
+        // Generate a self-signed certificate
+        X509Certificate cert = generateSelfSignedCertificate(entityId, protocol, publicKey, privateKey);
 
-//    public static X509Credential generateCredential(String entityId, String protocol) throws Exception {
-//        // Generate a key pair
-//        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-//        keyPairGenerator.initialize(2048);
-//        KeyPair keyPair = keyPairGenerator.generateKeyPair();
-//        PublicKey publicKey = keyPair.getPublic();
-//        PrivateKey privateKey = keyPair.getPrivate();
-//
-//        // Generate a self-signed certificate
-//        X509Certificate cert = generateSelfSignedCertificate(entityId, protocol, publicKey, privateKey);
-//
-//        // Create and return the credential
-//        X509Credential credential = new X509CredentialImpl(cert, privateKey);
-//        return credential;
-//    }
-//
-//    private static X509Certificate generateSelfSignedCertificate(String entityId, String protocol, PublicKey publicKey, PrivateKey privateKey) throws Exception {
-//        Calendar calendar = Calendar.getInstance();
-//        Date startDate = calendar.getTime();
-//        calendar.add(Calendar.YEAR, 1);
-//        Date endDate = calendar.getTime();
-//
-//        X509Certificate cert = KeySupport.generateSelfSignedCertificate(
-//                publicKey,
-//                privateKey,
-//                String.format("CN=%s,OU=%s,O=%s,L=%s,ST=%s,C=%s", entityId, protocol, protocol, protocol, protocol, protocol),
-//                startDate,
-//                endDate,
-//                "SHA256withRSA",
-//                true);
-//
-//        return cert;
-//    }
-//
-//    public static BasicX509Credential generateCredential(String entityId, String protocol) throws Exception {
-//        // Generate a key pair
-//        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-//        keyPairGenerator.initialize(2048);
-//        KeyPair keyPair = keyPairGenerator.generateKeyPair();
-//        PublicKey publicKey = keyPair.getPublic();
-//        PrivateKey privateKey = keyPair.getPrivate();
-//
-//        // Generate a self-signed certificate
-//        X509Certificate cert = generateSelfSignedCertificate(entityId, protocol, publicKey, privateKey);
-//
-//        // Create and return the credential
-//        BasicX509Credential credential = new BasicX509Credential(cert, privateKey);
-//        return credential;
-//    }
-//
-//    private static X509Certificate generateSelfSignedCertificate(String entityId, String protocol, PublicKey publicKey, PrivateKey privateKey) throws Exception {
-//        Calendar calendar = Calendar.getInstance();
-//        Date startDate = calendar.getTime();
-//        calendar.add(Calendar.YEAR, 1);
-//        Date endDate = calendar.getTime();
-//
-//        X509Certificate cert = KeySupport.generateSelfSignedCertificate(
-//                publicKey,
-//                privateKey,
-//                String.format("CN=%s,OU=%s,O=%s,L=%s,ST=%s,C=%s", entityId, protocol, protocol, protocol, protocol, protocol),
-//                startDate,
-//                endDate,
-//                "SHA256withRSA",
-//                true);
-//
-//        return cert;
-//    }
+        // Create and return the credential
+        BasicX509Credential credential = new BasicX509Credential();
+        credential.setEntityCertificate(cert);
+        credential.setPrivateKey(privateKey);
+        return credential;
+    }
+
+    private static X509Certificate generateSelfSignedCertificate(String entityId, String protocol, PublicKey publicKey, PrivateKey privateKey) throws Exception {
+        Calendar calendar = Calendar.getInstance();
+        Date startDate = calendar.getTime();
+        calendar.add(Calendar.YEAR, 1);
+        Date endDate = calendar.getTime();
+
+        X500Name issuer = new X500Name("CN=" + entityId + ",OU=" + protocol + ",O=" + protocol + ",L=" + protocol + ",ST=" + protocol + ",C=" + protocol);
+        X500Name subject = issuer;
+        BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
+
+        JcaX509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
+                issuer,
+                serial,
+                startDate,
+                endDate,
+                subject,
+                publicKey
+        );
+
+        builder.addExtension(Extension.subjectKeyIdentifier, false, createSubjectKeyId(publicKey));
+        builder.addExtension(Extension.authorityKeyIdentifier, false, createAuthorityKeyId(publicKey));
+        builder.addExtension(Extension.basicConstraints, true, new BasicConstraints(true));
+        builder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyEncipherment));
+        builder.addExtension(Extension.extendedKeyUsage, true, new ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth));
+
+        ContentSigner contentSigner = new JcaContentSignerBuilder("SHA256withRSA").build(privateKey);
+
+        return new JcaX509CertificateConverter().getCertificate(builder.build(contentSigner));
+    }
+
+    private static SubjectKeyIdentifier createSubjectKeyId(PublicKey publicKey) throws NoSuchAlgorithmException {
+        byte[] publicKeyBytes = publicKey.getEncoded();
+        MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+        byte[] digest = sha1.digest(publicKeyBytes);
+        byte[] keyIdentifier = Arrays.copyOfRange(digest, digest.length - 8, digest.length);
+        return new SubjectKeyIdentifier(keyIdentifier);
+    }
+
+    private static AuthorityKeyIdentifier createAuthorityKeyId(PublicKey publicKey) throws NoSuchAlgorithmException {
+        byte[] publicKeyBytes = publicKey.getEncoded();
+        MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+        byte[] digest = sha1.digest(publicKeyBytes);
+        byte[] keyIdentifier = Arrays.copyOfRange(digest, digest.length - 8, digest.length);
+        return new AuthorityKeyIdentifier(keyIdentifier);
+    }
 
     @Bean
     public WebSSOProfileOptions defaultWebSSOProfileOptions() {
@@ -313,7 +302,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
     public ExtendedMetadata extendedMetadata() {
 	    ExtendedMetadata extendedMetadata = new ExtendedMetadata();
 	    extendedMetadata.setIdpDiscoveryEnabled(true);
-	    extendedMetadata.setSigningAlgorithm("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256");
+	    extendedMetadata.setSigningAlgorithm(this.signatureAlgorithm);
 	    extendedMetadata.setSignMetadata(true);
 	    extendedMetadata.setEcpEnabled(true);
 	    return extendedMetadata;
@@ -369,10 +358,9 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
         return metadataProvider;
     }
 
-
     // IDP Metadata configuration - paths to metadata of IDPs in circle of trust
     // is here
-    // Do no forget to call iniitalize method on providers
+    // Do no forget to call initialize method on providers
     @Bean
     @Qualifier("metadata")
     public CachingMetadataManager metadata() throws MetadataProviderException, ResourceException {
@@ -383,9 +371,9 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
  
     // Filter automatically generates default SP metadata
     @Bean
-    public MetadataGenerator metadataGenerator() {
+    public MetadataGenerator metadataGenerator() throws Exception {
         MetadataGenerator metadataGenerator = new MetadataGenerator();
-        metadataGenerator.setEntityId("com:vdenotaris:spring:sp");
+        metadataGenerator.setEntityId(this.spEntityId);
         metadataGenerator.setExtendedMetadata(extendedMetadata());
         metadataGenerator.setIncludeDiscoveryExtension(false);
         metadataGenerator.setKeyManager(keyManager());
@@ -404,7 +392,9 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
     public SavedRequestAwareAuthenticationSuccessHandler successRedirectHandler() {
         SavedRequestAwareAuthenticationSuccessHandler successRedirectHandler =
                 new SavedRequestAwareAuthenticationSuccessHandler();
-        successRedirectHandler.setDefaultTargetUrl("/landing");
+        //TODO:
+        successRedirectHandler.setDefaultTargetUrl(this.acsUrl);
+//        successRedirectHandler.setDefaultTargetUrl("/landing");
         return successRedirectHandler;
     }
     
@@ -414,7 +404,9 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
 	    	SimpleUrlAuthenticationFailureHandler failureHandler =
 	    			new SimpleUrlAuthenticationFailureHandler();
 	    	failureHandler.setUseForward(true);
-	    	failureHandler.setDefaultFailureUrl("/error");
+            // TODO:
+            failureHandler.setDefaultFailureUrl(this.errorUrl);
+//	    	failureHandler.setDefaultFailureUrl("/error");
 	    	return failureHandler;
     }
      
@@ -438,7 +430,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
     }
      
     @Bean
-    public MetadataGeneratorFilter metadataGeneratorFilter() {
+    public MetadataGeneratorFilter metadataGeneratorFilter() throws Exception {
         return new MetadataGeneratorFilter(metadataGenerator());
     }
      

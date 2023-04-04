@@ -31,3 +31,9 @@ This project provides a basic implementation of a SAML Service Provider (SP) usi
 ## References
 * [Spring Security SAML Extension](https://docs.spring.io/spring-security-saml/docs/current/reference/htmlsingle/)
 * [SAML Specification](https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=security)
+
+## Secret Keys
+### To generate secret key:
+* `keytool -genseckey -alias my-secret-key -keyalg AES -keysize 128 -storetype jceks -keystore secret.jceks`
+### To check existing keys:
+* `keytool -list -keystore secret.jceks -storetype jceks`
