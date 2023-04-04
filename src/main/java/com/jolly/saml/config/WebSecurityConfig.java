@@ -4,15 +4,23 @@ import com.jolly.saml.core.SAMLUserDetailsServiceImpl;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.velocity.app.VelocityEngine;
-import org.opensaml.saml2.metadata.provider.HTTPMetadataProvider;
+import org.opensaml.saml2.metadata.provider.AbstractMetadataProvider;
 import org.opensaml.saml2.metadata.provider.MetadataProvider;
 import org.opensaml.saml2.metadata.provider.MetadataProviderException;
+import org.opensaml.saml2.metadata.provider.ResourceBackedMetadataProvider;
+import org.opensaml.util.resource.FilesystemResource;
+import org.opensaml.util.resource.ResourceException;
 import org.opensaml.xml.parse.ParserPool;
 import org.opensaml.xml.parse.StaticBasicParserPool;
+import org.opensaml.xml.security.credential.UsageType;
+import org.opensaml.xml.security.x509.BasicX509Credential;
+import org.opensaml.xml.security.x509.X509Credential;
+import org.opensaml.xml.signature.X509Certificate;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -46,13 +54,23 @@ import org.springframework.security.web.authentication.www.BasicAuthenticationFi
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.*;
  
 @Configuration
 @EnableWebSecurity
 @EnableGlobalMethodSecurity(securedEnabled = true)
 public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements InitializingBean, DisposableBean {
- 
+
+    @Value("${jolly.saml2.sp.entityid}")
+    private String spEntityId;
+    @Value("${jolly.saml2.sp.assertion_consumer_service.url}")
+    private String acsUrl;
+    @Value("${jolly.saml2.sp.nameidformat}")
+    private String nameIdFormat;
 	private Timer backgroundTaskTimer;
 	private MultiThreadedHttpConnectionManager multiThreadedHttpConnectionManager;
 
@@ -168,7 +186,112 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
         String defaultKey = "apollo";
         return new JKSKeyManager(storeFile, storePass, passwords, defaultKey);
     }
-    
+
+//    public static X509Credential generateCredential(String entityId, String protocol) throws Exception {
+//        // Generate a key pair
+//        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+//        keyPairGenerator.initialize(2048);
+//        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+//        PublicKey publicKey = keyPair.getPublic();
+//        PrivateKey privateKey = keyPair.getPrivate();
+//
+//        // Generate a self-signed certificate
+//        X509Certificate cert = generateSelfSignedCertificate(entityId, protocol, publicKey, privateKey);
+//
+//        // Create and return the credential
+//        BasicX509Credential credential = new BasicX509Credential();
+//        credential.setEntityCertificate(cert);
+//        credential.setPrivateKey(privateKey);
+//        return credential;
+//    }
+//
+//    private static X509Certificate generateSelfSignedCertificate(String entityId, String protocol, PublicKey publicKey, PrivateKey privateKey) throws Exception {
+//        Calendar calendar = Calendar.getInstance();
+//        Date startDate = calendar.getTime();
+//        calendar.add(Calendar.YEAR, 1);
+//        Date endDate = calendar.getTime();
+//
+//        X509Certificate cert = KeyStoreUtils.generateSelfSignedCertificate(
+//                publicKey,
+//                privateKey,
+//                String.format("CN=%s,OU=%s,O=%s,L=%s,ST=%s,C=%s", entityId, protocol, protocol, protocol, protocol, protocol),
+//                startDate,
+//                endDate,
+//                "SHA256withRSA",
+//                true);
+//
+//        return cert;
+//    }
+
+
+//    public static X509Credential generateCredential(String entityId, String protocol) throws Exception {
+//        // Generate a key pair
+//        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+//        keyPairGenerator.initialize(2048);
+//        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+//        PublicKey publicKey = keyPair.getPublic();
+//        PrivateKey privateKey = keyPair.getPrivate();
+//
+//        // Generate a self-signed certificate
+//        X509Certificate cert = generateSelfSignedCertificate(entityId, protocol, publicKey, privateKey);
+//
+//        // Create and return the credential
+//        X509Credential credential = new X509CredentialImpl(cert, privateKey);
+//        return credential;
+//    }
+//
+//    private static X509Certificate generateSelfSignedCertificate(String entityId, String protocol, PublicKey publicKey, PrivateKey privateKey) throws Exception {
+//        Calendar calendar = Calendar.getInstance();
+//        Date startDate = calendar.getTime();
+//        calendar.add(Calendar.YEAR, 1);
+//        Date endDate = calendar.getTime();
+//
+//        X509Certificate cert = KeySupport.generateSelfSignedCertificate(
+//                publicKey,
+//                privateKey,
+//                String.format("CN=%s,OU=%s,O=%s,L=%s,ST=%s,C=%s", entityId, protocol, protocol, protocol, protocol, protocol),
+//                startDate,
+//                endDate,
+//                "SHA256withRSA",
+//                true);
+//
+//        return cert;
+//    }
+//
+//    public static BasicX509Credential generateCredential(String entityId, String protocol) throws Exception {
+//        // Generate a key pair
+//        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+//        keyPairGenerator.initialize(2048);
+//        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+//        PublicKey publicKey = keyPair.getPublic();
+//        PrivateKey privateKey = keyPair.getPrivate();
+//
+//        // Generate a self-signed certificate
+//        X509Certificate cert = generateSelfSignedCertificate(entityId, protocol, publicKey, privateKey);
+//
+//        // Create and return the credential
+//        BasicX509Credential credential = new BasicX509Credential(cert, privateKey);
+//        return credential;
+//    }
+//
+//    private static X509Certificate generateSelfSignedCertificate(String entityId, String protocol, PublicKey publicKey, PrivateKey privateKey) throws Exception {
+//        Calendar calendar = Calendar.getInstance();
+//        Date startDate = calendar.getTime();
+//        calendar.add(Calendar.YEAR, 1);
+//        Date endDate = calendar.getTime();
+//
+//        X509Certificate cert = KeySupport.generateSelfSignedCertificate(
+//                publicKey,
+//                privateKey,
+//                String.format("CN=%s,OU=%s,O=%s,L=%s,ST=%s,C=%s", entityId, protocol, protocol, protocol, protocol, protocol),
+//                startDate,
+//                endDate,
+//                "SHA256withRSA",
+//                true);
+//
+//        return cert;
+//    }
+
     @Bean
     public WebSSOProfileOptions defaultWebSSOProfileOptions() {
         WebSSOProfileOptions webSSOProfileOptions = new WebSSOProfileOptions();
@@ -207,25 +330,52 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
 	@Bean
 	@Qualifier("idp-ssocircle")
 	public ExtendedMetadataDelegate ssoCircleExtendedMetadataProvider()
-			throws MetadataProviderException {
-		String idpSSOCircleMetadataURL = "https://idp.ssocircle.com/meta-idp.xml";
-		HTTPMetadataProvider httpMetadataProvider = new HTTPMetadataProvider(
-				this.backgroundTaskTimer, httpClient(), idpSSOCircleMetadataURL);
-		httpMetadataProvider.setParserPool(parserPool());
-		ExtendedMetadataDelegate extendedMetadataDelegate = 
-				new ExtendedMetadataDelegate(httpMetadataProvider, extendedMetadata());
-		extendedMetadataDelegate.setMetadataTrustCheck(true);
-		extendedMetadataDelegate.setMetadataRequireSignature(false);
-		backgroundTaskTimer.purge();
-		return extendedMetadataDelegate;
+            throws MetadataProviderException, ResourceException {
+//		String idpSSOCircleMetadataURL = "https://idp.ssocircle.com/meta-idp.xml";
+//		HTTPMetadataProvider httpMetadataProvider = new HTTPMetadataProvider(
+//				this.backgroundTaskTimer, httpClient(), idpSSOCircleMetadataURL);
+//		httpMetadataProvider.setParserPool(parserPool());
+//		ExtendedMetadataDelegate extendedMetadataDelegate =
+//				new ExtendedMetadataDelegate(httpMetadataProvider, extendedMetadata());
+//		extendedMetadataDelegate.setMetadataTrustCheck(true);
+//		extendedMetadataDelegate.setMetadataRequireSignature(false);
+//		backgroundTaskTimer.purge();
+//		return extendedMetadataDelegate;
+        AbstractMetadataProvider metadataProvider = idpMetadataProvider();
+        ExtendedMetadataDelegate extendedMetadataDelegate = new ExtendedMetadataDelegate(metadataProvider, extendedMetadata());
+        extendedMetadataDelegate.setMetadataTrustCheck(true);
+        extendedMetadataDelegate.setMetadataRequireSignature(false);
+        backgroundTaskTimer.purge();
+        return extendedMetadataDelegate;
 	}
+
+    @Bean
+    public ExtendedMetadataDelegate idpExtendedMetadataProvider() throws MetadataProviderException, ResourceException {
+        AbstractMetadataProvider metadataProvider = idpMetadataProvider();
+        ExtendedMetadataDelegate extendedMetadataDelegate = new ExtendedMetadataDelegate(metadataProvider, extendedMetadata());
+        extendedMetadataDelegate.setMetadataTrustCheck(true);
+        extendedMetadataDelegate.setMetadataRequireSignature(false);
+        backgroundTaskTimer.purge();
+        return extendedMetadataDelegate;
+    }
+
+    @Bean
+    public AbstractMetadataProvider idpMetadataProvider() throws MetadataProviderException, ResourceException {
+        ResourceBackedMetadataProvider metadataProvider = new ResourceBackedMetadataProvider(
+                this.backgroundTaskTimer, new FilesystemResource("src/main/resources/saml/idp-metadata.xml"));
+        metadataProvider.setParserPool(parserPool());
+        metadataProvider.setRequireValidMetadata(true);
+        metadataProvider.initialize();
+        return metadataProvider;
+    }
+
 
     // IDP Metadata configuration - paths to metadata of IDPs in circle of trust
     // is here
     // Do no forget to call iniitalize method on providers
     @Bean
     @Qualifier("metadata")
-    public CachingMetadataManager metadata() throws MetadataProviderException {
+    public CachingMetadataManager metadata() throws MetadataProviderException, ResourceException {
         List<MetadataProvider> providers = new ArrayList<MetadataProvider>();
         providers.add(ssoCircleExtendedMetadataProvider());
         return new CachingMetadataManager(providers);
@@ -238,7 +388,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter implements I
         metadataGenerator.setEntityId("com:vdenotaris:spring:sp");
         metadataGenerator.setExtendedMetadata(extendedMetadata());
         metadataGenerator.setIncludeDiscoveryExtension(false);
-        metadataGenerator.setKeyManager(keyManager()); 
+        metadataGenerator.setKeyManager(keyManager());
         return metadataGenerator;
     }
  
