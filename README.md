@@ -34,6 +34,6 @@ This project provides a basic implementation of a SAML Service Provider (SP) usi
 
 ## Secret Keys
 ### To generate secret key:
-* `keytool -genseckey -alias my-secret-key -keyalg AES -keysize 128 -storetype jceks -keystore secret.jceks`
+* `keytool -genseckey -alias {your own alias} -keyalg AES -keysize 128 -storetype jceks -keystore secret.jceks`
 ### To check existing keys:
 * `keytool -list -keystore secret.jceks -storetype jceks`
